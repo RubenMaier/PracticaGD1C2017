@@ -3,7 +3,7 @@
 Con esta informacion el area de marketing establecera un plan de publicidad de los productos menos vendidos
 */
 
-select depo_detalle,rubr_detalle,
+select Distinct depo_detalle,rubr_detalle,
 CASE WHEN 
 (
 select COUNT(DISTINCT prod_codigo)
@@ -35,11 +35,9 @@ select prod_codigo
  
  ) end
 
-from DEPOSITO join STOCK on depo_codigo = stoc_deposito
+from DEPOSITO 
+join STOCK on depo_codigo = stoc_deposito
 JOIN Producto on prod_codigo = stoc_producto
 JOIN Rubro r on rubr_id = prod_rubro
-JOIN Item_Factura on item_producto = prod_codigo
-
  group by depo_detalle,rubr_id,rubr_detalle
- order by SUM(item_cantidad)
-;
+ order by rubr_detalle;
