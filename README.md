@@ -1,3 +1,3 @@
 # PracticaGD1C2017
 
-asdasdsa
+Practica resuelta del primer cuatrimestre de gestion de datos 2017
