@@ -388,6 +388,201 @@ O SU CANTIDAD SE ALTERA TENGO QUE ACTUALIZAR EL STOCK DE SUS COMPONENTES,
 PERO EL MISMO DEPENDE DEL DEPOSITO, QUE NO TENGO FORMA (HASTA DONDE SE) DE CONOCER
 
 */
+
+IF EXISTS (SELECT name FROM sysobjects WHERE name='trigger_mod_item')
+DROP TRIGGER trigger_mod_item
+GO
+
+CREATE TRIGGER trigger_mod_item ON ITEM_FACTURA AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+
+	DECLARE @i_tipo char(1)	
+	DECLARE @i_sucursal char(4)
+	DECLARE	@i_numero char(8)
+	DECLARE @i_producto char(8)
+	DECLARE @i_cantidad decimal(12,2)
+	DECLARE @i_precio decimal(12,2)
+	DECLARE @d_tipo char(1)
+	DECLARE @d_sucursal char(4)
+	DECLARE	@d_numero char(8)
+	DECLARE @d_producto char(8)
+	DECLARE @d_cantidad decimal(12,2)
+	DECLARE @d_precio decimal(12,2)
+	DECLARE @componente char(8)
+
+	DECLARE @diferencia int
+	DECLARE @cantidad int
+
+
+
+
+	DECLARE MODIFICACION CURSOR for
+	select 
+	i.item_tipo, i.item_sucursal,i.item_numero,i.item_producto,i.item_cantidad,i.item_precio,
+	d.item_tipo, d.item_sucursal,d.item_numero,d.item_producto,d.item_cantidad,d.item_precio,
+	ISNULL(i.item_cantidad,0) - ISNULL(d.item_cantidad,0) diferencia, comp_componente
+	from INSERTED i FULL OUTER JOIN DELETED d on 
+		d.item_tipo = i.item_tipo
+	and d.item_sucursal = i.item_sucursal
+	and d.item_numero = i.item_numero
+	and d.item_producto = i.item_producto
+	JOIN Composicion c on c.comp_producto = ISNULL(i.item_producto,d.item_producto)
+
+	open MODIFICACION
+	
+	FETCH NEXT FROM MODIFICACION INTO @i_tipo,@i_sucursal,@i_numero,@i_producto,@i_cantidad,@i_precio,
+	@d_tipo,@d_sucursal,@d_numero,@d_producto,@d_cantidad,@d_precio,@diferencia, @componente
+
+	DECLARE @cant int = @diferencia
+
+	WHILE @@FETCH_STATUS=0
+		BEGIN
+			--SI ES UPDATE, QUE CREO QUE ES LO QUE PIDE EL EJERCICIO
+			if (@i_producto is not null and @d_producto is not null)
+			BEGIN
+				
+				--hay que agregar
+				IF (@diferencia > 0)
+				BEGIN
+					--veo si hay stock					
+					select @cantidad = SUM(STOC_CANTIDAD) from STOCK where stoc_producto = @componente
+
+					if (@diferencia > @cantidad) -- no hay stock
+					BEGIN
+
+						rollback transaction
+						RAISERROR('No hay suficiente stock',16,1)
+
+					END
+
+					else --hay stock
+					BEGIN
+						WHILE @diferencia != 0
+						BEGIN --lo resto del deposito donde haya mas stock primero
+							
+							
+							select @cant = @diferencia - 
+							(CASE WHEN (select top 1 stoc_cantidad from STOCK where stoc_producto = @componente order by stoc_cantidad desc) > @diferencia 
+							THEN @diferencia
+							else (select top 1 stoc_cantidad from STOCK where stoc_producto = @componente order by stoc_cantidad desc) END)
+							
+							UPDATE STOCK set stoc_cantidad = stoc_cantidad - (@diferencia - @cant)
+							where stoc_deposito = (select top 1 stoc_deposito from stock where stoc_producto = @componente order by stoc_cantidad desc)
+
+							select @diferencia = @cant
+
+						END
+
+					END
+				END
+
+
+				--hay que devolver al stock
+				ELSE IF (@diferencia < 0)
+				BEGIN
+					--busco la disponibilidad y si entra lo que tengo que devolver a los depositos
+					select @cantidad = SUM(STOC_STOCK_MAXIMO) - SUM(STOC_CANTIDAD)
+					from stock where stoc_producto = @componente
+					
+					IF (@cantidad < ABS(@diferencia)) --no alcanza el espacio disponible
+					BEGIN
+						rollback transaction
+						RAISERROR('Los depositos estan llenos',16,1)
+					END
+					ELSE --hay espacio disponible
+					BEGIN
+						WHILE @diferencia != 0
+						BEGIN --se lo sumo al deposito donde haya mas espacio primero
+							select @cant = @diferencia +
+							(CASE WHEN (select top 1 stoc_stock_maximo - stoc_cantidad from STOCK where stoc_producto = @componente order by 1 desc) > ABS(@diferencia)
+							THEN ABS(@diferencia) 
+							else (select top 1 stoc_stock_maximo - stoc_cantidad from STOCK where stoc_producto = @componente order by 1 desc) END)
+
+							UPDATE STOCK set stoc_cantidad = stoc_cantidad - (@diferencia - @cant)
+							where stoc_deposito = (select top 1 stoc_deposito from stock where stoc_producto = @componente order by (stoc_stock_maximo - stoc_cantidad) desc)
+
+
+						END
+					END
+
+				END
+
+			END
+			else if (@i_producto is null and @d_producto is not null) --hay que reponer al stock
+			BEGIN
+
+			--busco la disponibilidad y si entra lo que tengo que devolver a los depositos
+				select @cantidad = SUM(STOC_STOCK_MAXIMO) - SUM(STOC_CANTIDAD)
+				from stock where stoc_producto = @componente
+					
+				IF (@cantidad < ABS(@diferencia)) --no alcanza el espacio disponible
+				BEGIN
+					rollback transaction
+					RAISERROR('Los depositos estan llenos',16,1)
+				END
+				ELSE --hay espacio disponible
+				BEGIN
+					WHILE @diferencia != 0
+					BEGIN --se lo sumo al deposito donde haya mas espacio primero
+						select @cant = @diferencia +
+						(CASE WHEN (select top 1 stoc_stock_maximo - stoc_cantidad from STOCK where stoc_producto = @componente order by 1 desc) > ABS(@diferencia)
+						THEN ABS(@diferencia) 
+						else (select top 1 stoc_stock_maximo - stoc_cantidad from STOCK where stoc_producto = @componente order by 1 desc) END)
+
+						UPDATE STOCK set stoc_cantidad = stoc_cantidad - (@diferencia - @cant)
+						where stoc_deposito = (select top 1 stoc_deposito from stock where stoc_producto = @componente order by (stoc_stock_maximo - stoc_cantidad) desc)
+
+
+					END
+				END
+
+
+
+
+			END
+
+			else if (@i_producto is not null and @d_producto is null) --hay que sacar del stock
+			BEGIN
+
+				select @cantidad = SUM(STOC_CANTIDAD) from STOCK where stoc_producto = @componente
+
+				if (@diferencia > @cantidad) -- no hay stock
+				BEGIN
+
+					rollback transaction
+					RAISERROR('No hay suficiente stock',16,1)
+
+				END
+
+				else --hay stock
+				BEGIN
+					WHILE @diferencia != 0
+					BEGIN --lo resto del deposito donde haya mas stock primero
+							
+							
+						select @cant = @diferencia - 
+						(CASE WHEN (select top 1 stoc_cantidad from STOCK where stoc_producto = @componente order by stoc_cantidad desc) > @diferencia
+						THEN @diferencia
+						else (select top 1 stoc_cantidad from STOCK where stoc_producto = @componente order by stoc_cantidad desc) END)
+							
+						UPDATE STOCK set stoc_cantidad = stoc_cantidad - (@diferencia - @cant)
+						where stoc_deposito = (select top 1 stoc_deposito from stock where stoc_producto = @componente order by stoc_cantidad desc)
+				
+						select @diferencia = @cant
+
+					END
+
+				END
+
+			END
+
+		
+		END
+
+END
+GO
+
 /*
 10. Hacer un trigger que ante el intento de borrar un artículo verifique que no exista
 stock y si es así lo borre en caso contrario que emita un mensaje de error.
