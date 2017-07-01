@@ -329,6 +329,7 @@ END
 GO 
 --FALTA APLICARLO A TODAS LAS FACTURAS Y TODOS LOS PRODUCTOS
 
+
 /*7. Hacer un procedimiento que dadas dos fechas complete la tabla Ventas. Debe
 insertar una línea por cada artículo con los movimientos de stock realizados entre
 esas fechas. La tabla se encuentra creada y vacía.
@@ -338,24 +339,26 @@ VENTAS
   del       del       facturas)			             de la      Costo 
   articulo  articulo								 tabla      Actual
 */
+
 if OBJECT_ID('Ventas','U') IS NOT NULL 
-DROP TABLE Ventas
-GO
-Create table Ventas
-(
-vent_codigo char(8) NULL,
-vent_detalle char(50) NULL,
-vent_cant_mov int NULL,
-vent_precio decimal(12,2) NULL,
-vent_renglon int PRIMARY KEY,
-vent_ganancia decimal (12,2) NULL
-)
-if OBJECT_ID('llenar_ventas','P') is not null
-DROP PROCEDURE llenar_ventas
+	DROP TABLE Ventas
 GO
 
-CREATE PROCEDURE llenar_ventas
-(@A date,@B date)
+Create table Ventas
+(
+	vent_codigo char(8) NULL,
+	vent_detalle char(50) NULL,
+	vent_cant_mov int NULL,
+	vent_precio decimal(12,2) NULL,
+	vent_renglon int PRIMARY KEY,
+	vent_ganancia decimal (12,2) NULL
+)
+
+if OBJECT_ID('llenar_ventas','P') is not null
+	DROP PROCEDURE llenar_ventas
+GO
+
+CREATE PROCEDURE llenar_ventas (@A date,@B date)
 AS 
 BEGIN
 	if @A>@B
@@ -394,6 +397,8 @@ BEGIN
 	END
 END
 GO
+
+
 /*8. Realizar un procedimiento que complete la tabla Diferencias de precios, para los
 productos facturados que tengan composición y en los cuales el precio de
 facturación sea diferente al precio del cálculo de los precios unitarios por cantidad
@@ -404,9 +409,9 @@ DIFERENCIAS
 Código Detalle Cantidad Precio_generado Precio_facturado
 (prod) (prod)   (comp)
 */
-GO
+
 IF EXISTS (SELECT name FROM sysobjects WHERE name='precio_compuesto'  AND type IN ( N'FN', N'IF', N'TF', N'FS', N'FT' ))
-DROP FUNCTION precio_compuesto 
+	DROP FUNCTION precio_compuesto 
 GO
 
 CREATE FUNCTION precio_compuesto (@Producto char(8))
@@ -422,27 +427,34 @@ BEGIN
 	set @Precio = (SELECT prod_precio FROM Producto WHERE prod_codigo=@Producto)
 	RETURN @Precio
 END
+GO
 
-GO
 IF EXISTS (SELECT name FROM sysobjects WHERE name='Diferencias' AND type='U')
-DROP TABLE Diferencias 
+	DROP TABLE Diferencias 
 GO
-CREATE TABLE Diferencias (
-							Codigo char(8) PRIMARY KEY,
-							Detalle char(50),
-							Cantidad int,
-							Precio_generado decimal(12,2),
-							Precio_facturado decimal(12,2)
-						)
-INSERT INTO Diferencias SELECT prod_codigo, prod_detalle, count(*), dbo.precio_compuesto(prod_codigo), prod_precio
-FROM Producto JOIN Composicion ON prod_codigo=comp_producto
-GROUP BY prod_codigo, prod_detalle, prod_precio
+
+CREATE TABLE Diferencias 
+(
+	Codigo char(8) PRIMARY KEY,
+	Detalle char(50),
+	Cantidad int,
+	Precio_generado decimal(12,2),
+	Precio_facturado decimal(12,2)
+)
+
+INSERT INTO Diferencias 
+	SELECT prod_codigo, prod_detalle, count(*), dbo.precio_compuesto(prod_codigo), prod_precio
+	FROM Producto JOIN Composicion ON prod_codigo=comp_producto
+	GROUP BY prod_codigo, prod_detalle, prod_precio
 
 SELECT * FROM Diferencias
+
+
 
 /*9. Hacer un trigger que ante alguna modificación de un ítem de factura de un artículo
 con composición realice el movimiento de sus correspondientes componentes.
 */
+
 /*
 NO LO PUEDO RESOLVER
 EL MOVIMIENTO DE SUS COMPONENTES LO INTERPRETO COMO QUE SI UN ITEM SE BORRA
@@ -475,8 +487,6 @@ BEGIN
 
 	DECLARE @diferencia int
 	DECLARE @cantidad int
-
-
 
 
 	DECLARE MODIFICACION CURSOR for
@@ -600,8 +610,6 @@ BEGIN
 				END
 
 
-
-
 			END
 
 			else if (@i_producto is not null and @d_producto is null) --hay que sacar del stock
@@ -645,6 +653,7 @@ BEGIN
 END
 GO
 
+
 /*
 10. Hacer un trigger que ante el intento de borrar un artículo verifique que no exista
 stock y si es así lo borre en caso contrario que emita un mensaje de error.
@@ -679,6 +688,7 @@ BEGIN
 	
 END
 GO
+
 --PRUEBA QUE FUNCAA
 --DELETE FROM Producto WHERE prod_codigo = '00000000' 
 --SELECT * FROM Producto WHERE prod_codigo = '00000000'
