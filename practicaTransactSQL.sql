@@ -8,63 +8,102 @@ al límite retornar “OCUPACION DEL DEPOSITO XX %” siendo XX el % de
 ocupación. Si la cantidad almacenada es mayor o igual al límite retornar
 “DEPOSITO COMPLETO”.
 */
+
 GO
 IF EXISTS (SELECT name FROM sysobjects WHERE name='estado_deposito' AND type in ( N'FN', N'IF', N'TF', N'FS', N'FT' ))
 DROP FUNCTION estado_deposito
 GO
-CREATE FUNCTION estado_deposito
-(  @prod_codigo char(8), @depo_codigo char(2) )
-RETURNS Nvarchar(200)
+
+CREATE FUNCTION estado_deposito 
+( 
+	@prod_codigo char(8), 
+	@depo_codigo char(2) 
+)
+RETURNS nvarchar(200)
 BEGIN
 	DECLARE @cant_stock int
 	DECLARE @max_stock int
 	DECLARE @RESPUESTA varchar(200)
 
-	SELECT TOP 1 @cant_stock=isnull(stoc_cantidad,0), @max_stock=isnull(stoc_stock_maximo,0)
-	FROM STOCK
-	WHERE stoc_deposito=@depo_codigo AND stoc_producto=@prod_codigo
+	SELECT TOP 1 @cant_stock = isnull(stoc_cantidad, 0), @max_stock = isnull(stoc_stock_maximo, 0)
+		FROM STOCK
+		WHERE stoc_deposito = @depo_codigo 
+			AND stoc_producto = @prod_codigo
 	
-
-	if (@cant_stock>=@max_stock)
+	IF (@cant_stock >= @max_stock)
 		SET @RESPUESTA= 'DEPOSITO COMPLETO'
-	else 
-	BEGIN
-		DECLARE @porcentaje int
-		SET @porcentaje = case when @max_stock=0 then 0 else @cant_stock*100/@max_stock end
-		SET @RESPUESTA= convert(varchar,CONCAT('OCUPACION DEL DEPOSITO ',@porcentaje, '%'))
-	END
-RETURN @RESPUESTA
+	ELSE 
+		BEGIN
+			DECLARE @porcentaje int
+			SET @porcentaje = 
+				case 
+					when @max_stock = 0 
+						then 0 
+					else @cant_stock*100/@max_stock 
+				end
+			SET @RESPUESTA = convert(varchar, CONCAT('OCUPACION DEL DEPOSITO ', @porcentaje, '%'))
+		END
+
+	RETURN @RESPUESTA
 END
 GO
 
-select dbo.estado_deposito(stoc_producto, stoc_deposito) as funcion, isnull(stoc_cantidad,0) cant, isnull(stoc_stock_maximo,0) limit
+-- testeo
+SELECT 
+	dbo.estado_deposito(stoc_producto, stoc_deposito) as funcion, 
+	isnull(stoc_cantidad, 0) cant, 
+	isnull(stoc_stock_maximo, 0) limit
 FROM STOCK 
+GO
+
 
 /*2. Realizar una función que dado un artículo y una fecha, retorne el stock que existía a
 esa fecha
 */
-GO
-CREATE FUNCTION stock_fecha
-(@prod_codigo char(8), @fecha smalldatetime)
-returns int
+
+CREATE FUNCTION stock_fecha (@prod_codigo char(8), @fecha smalldatetime)
+RETURNS int
 BEGIN --ni idea como funciona lo de reposicion, si tuviera una fecha de cuando se repuso 
 	  --por ultima vez (en lugar hay de la prox que se va a reponer podria hacer algo mas
 	DECLARE @Vendidos_Desde_Entonces int
 	DECLARE @Stock_Actual int
 	
-	SELECT @Vendidos_Desde_Entonces=
-			SUM(case when @prod_codigo=item_producto then item_cantidad
-		   else case when @prod_codigo=c1.comp_componente then item_cantidad*c1.comp_cantidad
-		   else case when @prod_codigo=c2.comp_componente then item_cantidad*c1.comp_cantidad*c2.comp_cantidad end end end)
-	FROM Item_Factura JOIN Factura ON (item_numero=fact_numero AND item_sucursal=fact_sucursal AND item_tipo=fact_tipo)
-					  LEFT JOIN Composicion c1 ON (c1.comp_componente=item_producto)
-					  LEFT JOIN Composicion c2 ON (c2.comp_componente=c1.comp_producto)
-	WHERE convert(DATE,fact_fecha) BETWEEN convert(DATE,@fecha) AND convert(DATE,GETDATE())
-		  AND @prod_codigo in (item_producto,c1.comp_componente,c2.comp_componente)
+	SELECT 
+			@Vendidos_Desde_Entonces = SUM(
+				case when @prod_codigo = item_producto 
+					then item_cantidad
+				else 
+					case when @prod_codigo = c1.comp_componente 
+						then item_cantidad*c1.comp_cantidad
+					else 
+						case when @prod_codigo = c2.comp_componente 
+							then item_cantidad*c1.comp_cantidad*c2.comp_cantidad 
+						end 
+					end 
+				end
+			)
 
-	SELECT @Stock_Actual=SUM(stoc_cantidad)
-	FROM STOCK
-	WHERE stoc_producto=@prod_codigo
+		FROM Item_Factura 
+			JOIN Factura 
+				ON (
+					item_numero = fact_numero 
+					AND item_sucursal = fact_sucursal 
+					AND item_tipo = fact_tipo
+				)
+			LEFT JOIN Composicion c1 
+				ON c1.comp_componente = item_producto
+			LEFT JOIN Composicion c2 
+				ON c2.comp_componente = c1.comp_producto
+		
+		WHERE 
+			convert(DATE,fact_fecha) BETWEEN convert(DATE,@fecha) 
+			AND convert(DATE,GETDATE())
+			AND @prod_codigo in (item_producto, c1.comp_componente, c2.comp_componente)
+
+	
+	SELECT @Stock_Actual = SUM(stoc_cantidad)
+		FROM STOCK
+		WHERE stoc_producto = @prod_codigo
 
 	RETURN @Stock_Actual+@Vendidos_Desde_Entonces
 END 
@@ -76,42 +115,54 @@ DROP FUNCTION stock_fecha
 caso que sea necesario. Se sabe que debería existir un único gerente general (debería
 ser el único empleado sin jefe). Si detecta que hay más de un empleado sin jefe
 deberá elegir entre ellos el gerente general, el cual será seleccionado por mayor
-salario. Si hay más de uno se seleccionara el de mayor antigüedad en la empresa.
+salario. Si hay más de uno, se seleccionara el de mayor antigüedad en la empresa.
 Al finalizar la ejecución del objeto la tabla deberá cumplir con la regla de un único
 empleado sin jefe (el gerente general) y deberá retornar la cantidad de empleados
 que había sin jefe antes de la ejecución.
 */
+
 GO
 IF EXISTS (SELECT name FROM sysobjects WHERE name='arreglar_gerente' AND type='p')
 	DROP PROCEDURE arreglar_gerente
 GO
-CREATE PROC arreglar_gerente
-(@cant_emps_sin_jefe int OUTPUT)
+
+CREATE PROC arreglar_gerente (@cant_emps_sin_jefe int OUTPUT)
 AS
 BEGIN
 	DECLARE @jefe_codigo numeric(6,0)
 	DECLARE @emps_sin_jefe TABLE(
 		empl_codigo numeric(6,0)
 	)
+
 	INSERT INTO @emps_sin_jefe
-	SELECT empl_codigo 
-	FROM Empleado
-	WHERE empl_jefe IS NULL
-	ORDER BY empl_salario DESC, empl_ingreso ASC
+		SELECT empl_codigo 
+			FROM Empleado
+			WHERE empl_jefe IS NULL
+			ORDER BY empl_salario DESC, empl_ingreso ASC
 	
-	set @cant_emps_sin_jefe =(SELECT  COUNT (*) FROM @emps_sin_jefe)
+	SET @cant_emps_sin_jefe = (SELECT  COUNT (*) FROM @emps_sin_jefe)
 	
-	IF (@cant_emps_sin_jefe>1)
+	IF (@cant_emps_sin_jefe > 1)
 		BEGIN
 			SELECT TOP 1 @jefe_codigo=empl_codigo
-			FROM @emps_sin_jefe
-			
-			UPDATE Empleado
-			SET empl_jefe=@jefe_codigo
-			WHERE empl_jefe is null AND empl_codigo!=@jefe_codigo
+				FROM @emps_sin_jefe
 
+			UPDATE Empleado
+				SET empl_jefe=@jefe_codigo
+				WHERE empl_jefe is null AND empl_codigo!=@jefe_codigo
 		END
+	
 	RETURN @cant_emps_sin_jefe
+END
+GO
+
+
+CREATE FUNCTION ver_gerente ()
+RETURNS INT
+BEGIN
+	DECLARE @emp int
+	EXEC arreglar_gerente @emp
+	RETURN @emp
 END
 GO
 
@@ -123,27 +174,29 @@ a lo largo del último año. Se deberá retornar el código del vendedor que más ven
 */
 --SE INTERPRETA ULTIMO AÑO COMO EL AÑO ANTERIOR A ESTE
 --EL MONTO SE CALCULA SIN fact_total_impuestos
-GO
+
 IF OBJECT_ID('actualizar_comision_empleados','P') IS NOT NULL
 	DROP PROCEDURE actualizar_comision_empleados
 GO
-CREATE PROCEDURE actualizar_comision_empleados
-(@mayor_vendedor numeric(6) OUTPUT)
+
+CREATE PROCEDURE actualizar_comision_empleados (@mayor_vendedor numeric(6) OUTPUT)
 AS
 BEGIN
-	
 	UPDATE Empleado
-	SET empl_comision = isnull(
-					   (SELECT SUM(f1.fact_total)
-						FROM Factura AS f1
-						WHERE f1.fact_vendedor=empl_codigo AND YEAR(f1.fact_fecha)=YEAR(GETDATE())-1)
-						,0)
-	
-	set @mayor_vendedor = (SELECT TOP 1 empl_codigo
-						   FROM Empleado
-						   ORDER BY empl_comision DESC)
+		SET empl_comision = isnull(
+							   (SELECT SUM(f1.fact_total)
+									FROM Factura AS f1
+									WHERE 
+										f1.fact_vendedor = empl_codigo 
+										AND YEAR(f1.fact_fecha) = YEAR(GETDATE())-1)
+							, 0)
+
+		SET @mayor_vendedor = (SELECT TOP 1 empl_codigo
+								   FROM Empleado
+								   ORDER BY empl_comision DESC)
 END
 GO
+
 /*5. Realizar un procedimiento que complete con los datos existentes en el modelo
 provisto la tabla de hechos denominada Fact_table tiene las siguiente definición:
 Create table Fact_table
@@ -162,50 +215,57 @@ Add constraint primary key(anio,mes,familia,rubro,zona,cliente,producto)
 */
 
 if OBJECT_ID('Fact_table','U') IS NOT NULL 
-DROP TABLE Fact_table
+	DROP TABLE Fact_table
 GO
-Create table Fact_table
+
+CREATE TABLE Fact_table
 (
-anio char(4) NOT NULL, --YEAR(fact_fecha)
-mes char(2) NOT NULL, --RIGHT('0' + convert(varchar(2),MONTH(fact_fecha)),2)
-familia char(3) NOT NULL,--prod_familia
-rubro char(4) NOT NULL,--prod_rubro
-zona char(3) NOT NULL,--depa_zona
-cliente char(6) NOT NULL,--fact_cliente
-producto char(8) NOT NULL,--item_producto
-cantidad decimal(12,2) NOT NULL,--item_cantidad
-monto decimal(12,2)--asumo que es item_precio debido a que es por cada producto, 
+	anio char(4) NOT NULL, --YEAR(fact_fecha)
+	mes char(2) NOT NULL, --RIGHT('0' + convert(varchar(2),MONTH(fact_fecha)),2)
+	familia char(3) NOT NULL,--prod_familia
+	rubro char(4) NOT NULL,--prod_rubro
+	zona char(3) NOT NULL,--depa_zona
+	cliente char(6) NOT NULL,--fact_cliente
+	producto char(8) NOT NULL,--item_producto
+	cantidad decimal(12,2) NOT NULL,--item_cantidad
+	monto decimal(12,2)--asumo que es item_precio debido a que es por cada producto, 
 				   --asumo tambien que el precio ya esta determinado por total y no por unidad (no debe multiplicarse por cantidad)
 )
-Alter table Fact_table
-Add constraint pk_Fact_table_ID primary key(anio,mes,familia,rubro,zona,cliente,producto)
+
+ALTER TABLE Fact_table
+	Add constraint pk_Fact_table_ID primary key(anio,mes,familia,rubro,zona,cliente,producto)
 GO
 
 if OBJECT_ID('llenar_fact_table','P') IS NOT NULL
-DROP PROCEDURE llenar_fact_table
+	DROP PROCEDURE llenar_fact_table
 GO
 
 CREATE PROCEDURE llenar_fact_table
 AS
 BEGIN
 	INSERT INTO Fact_table 
-	SELECT YEAR(fact_fecha)
-		  ,RIGHT('0' + convert(varchar(2),MONTH(fact_fecha)),2)
-		  ,prod_familia
-		  ,prod_rubro
-		  ,depa_zona
-		  ,fact_cliente
-		  ,item_producto
-		  ,sum(item_cantidad)
-		  ,sum(item_precio)
+		SELECT YEAR(fact_fecha)
+			  ,RIGHT('0' + convert(varchar(2),MONTH(fact_fecha)),2)
+			  ,prod_familia
+			  ,prod_rubro
+			  ,depa_zona
+			  ,fact_cliente
+			  ,item_producto
+			  ,sum(item_cantidad)
+			  ,sum(item_precio)
+
 	FROM Factura
 		 JOIN Item_Factura
 			ON fact_sucursal = item_sucursal
 			AND fact_tipo = item_tipo
-			AND fact_numero=item_numero
-		 JOIN Producto ON item_producto=prod_codigo
-		 JOIN Empleado ON fact_vendedor=empl_codigo
-		 JOIN Departamento ON empl_departamento=depa_codigo
+			AND fact_numero = item_numero
+		 JOIN Producto 
+			 ON item_producto = prod_codigo
+		 JOIN Empleado 
+			 ON fact_vendedor = empl_codigo
+		 JOIN Departamento 
+			 ON empl_departamento = depa_codigo
+
 	GROUP BY  YEAR(fact_fecha)
 			  ,RIGHT('0' + convert(varchar(2),MONTH(fact_fecha)),2)
 			  ,prod_familia
@@ -218,13 +278,15 @@ GO
 
 EXECUTE llenar_fact_table
 GO 
+
+
 /*6. Realizar un procedimiento que si en alguna factura se facturaron componentes que
 conforman un combo determinado (o sea que juntos componen otro producto de
 mayor nivel), en cuyo caso deberá reemplazar las filas correspondientes a dichos
 productos por una sola fila con el producto que componen con la cantidad de dicho
 producto que corresponda.
 */
-GO
+
 IF EXISTS (SELECT *
            FROM   sys.objects
            WHERE  object_id = OBJECT_ID(N'compuesto_en_factura')
