@@ -1,0 +1,56 @@
+-- EJERCICIO 1 ---
+Explique que desventajas presenta utilizar una estructura de datos de 
+arbol binario para implementar el acceso a datos, comentando posibles soluciones.
+
+Contestación: Una desventaja es que necesita de estructuras adicionales 
+lo que ocupa mas espacio, ademas estas tienen que ser mantenidas
+por lo que también ocupa procesamiento a medida que se generan operaciones 
+que modifiquen alguna fila de dicha tabla
+
+---
+osea la posta es que es xq si vos necesitas hacer accesos donde tenes que hacer 
+recorrido full de una tabla o que signifique el recorrido completo del arbol es 
+una perdida de recursos y tarda mas que algo lineal
+log2 N
+
+--- EJERCICIO 2 ---
+Especifique y detalle 1 escenario donde sería adeucado implementar una 
+vista materializada, informando ademas que técnicas conceptuales utilizaría 
+para ganar performance en dicha
+
+Contestación: Un escenario donde sería útil aplicar una vista es en aquellos 
+donde se quiere suministrar un nivel adicional
+de seguridad restringiendo el acceso a un conjunto predeterminado de filas o 
+columnas de una tabla
+
+Por ejemplo cuando un administrador de bases de datos interactua con un 
+programador que necesita ciertos requisitos,
+lo recomendable seria que este administrador cree una vista para que el programador 
+solo interactue con lo que necesita, y así mantener una capa de seguridad extra
+
+---
+vista materializada es una vista estatica
+es como una tabla pero la podes actualizar periodicamente
+ademas los datos estan fisicamente en disco                        
+como si fuera una tabla
+pero la idea es que ante la modificacion vos la volves a corres y se actualiza
+o cada cierto tiempo como vos quieras
+en la materializada no porque es como si hubieras hecho un create table mas o menos
+
+la vista no ocupa espacio pero te facilita visibilidad
+por ej tenes un query gigante pero tenes que hacer mas joins
+en cambio la vista comun si tenes un query que tarda 1 minuto va a seguir tardando 1 minuto
+
+siempre que necesites acceder a datos que no sean full table los indices rinden
+o si vas a hacer index scan de toda la tabla  (osea solo traer no se  los codigos 
+del producto por ej9) ahi vas al indice directo y no pasas por el full access table
+
+
+full table access cuando vos haces un "select a la tabla" y tenes que recorrer 
+absolutamente toda la tabla (no podes acceder ni por el indice ni por cierta parte del indice)
+para buscar algo especial estas buscando por algo que no esta indexado y tenes 
+que buscar por toda la tabla, no hay otra
+y cuando para el indice el index scan lo que hace es por ejemplo 
+"select prod_codigo from producto" prod_codigo es la primary
+si vos solo traes el codigo eso es un index sacan, porque no mira toda la tabla, 
+barre solo el indice y se llama "full index scan"

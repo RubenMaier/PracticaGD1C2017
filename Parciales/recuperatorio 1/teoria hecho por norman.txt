@@ -1,0 +1,21 @@
+-- EJERCICIO 1 ---
+Explique que desventajas presenta utilizar una estructura de datos de 
+arbol binario para implementar el acceso a datos, comentando posibles soluciones.
+
+La desventaja es que depende del orden de llegada de los datos para que sea eficiente la
+futura busqueda. Por ejemplo si el orden del imput es 1 2 3 4 5, no tiene sentido mantener
+una estructura de arbol ya que si se ordena por orden de lelgada, para buscar 3 haría una
+busqueda lineal al ser esa la forma del arbol. Otra desventaja es que es mas trabaoj para el
+motor montar esa estructura. una posible solucion es implementar un arbol de auto balanceo,
+como el AVL, de esta forma la complejidad de una busqueda en uno de esos arboles se mantiene
+siempre en orden de complejidad O(log n)
+
+--- EJERCICIO 2 ---
+Especifique y detalle 1 escenario donde sería adeucado implementar una 
+vista materializada, informando ademas que técnicas conceptuales utilizaría 
+para ganar performance en dicha
+
+Un buen escenario puede ser un DW (datawarehousing), donde el acceso frecuente a las tablas
+basicas resulta demasiado costoso. Para carle mayor beneficio separaria las vistas segun
+dominios que me interesan, dejando en esa vista los datos necesarios calculados de tablas
+basicas. Ademas deberia tener una granularidad minima de datos que quiero para obtener.
